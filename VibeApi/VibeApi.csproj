@@ -7,11 +7,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-	<PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.0" />
-	<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.0" />
-	<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
-	<PackageReference Include="Microsoft.AspNetCore.Identity" Version="8.0.0" />
-	<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.31.0" />
+	<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+	<PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+	<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+	  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+	  <PrivateAssets>all</PrivateAssets>
+	</PackageReference>
+	<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+	<PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+	<!-- Align JWT-related packages with the JwtBearer package to avoid package downgrade and known vulnerabilities -->
+	<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.2" />
   </ItemGroup>
 
 </Project>
