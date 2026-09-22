@@ -22,38 +22,49 @@ namespace VibeApi.Controllers
             _provider = provider;
         }
 
-        [HttpGet("venues")]
-public async Task<IActionResult> SearchVenues(string mood, decimal lat, decimal lng)
-{
-    var moodTrimmed = (mood ?? string.Empty).Trim().ToLower();
+        [HttpGet]
+        public async Task<IActionResult> SearchVenues(string mood, decimal lat, decimal lng)
+        {
+            var moodTrimmed = (mood ?? string.Empty).Trim().ToLower();
 
-    // 1. Try BizData first
-    var venues = await _provider.SearchByCategoryAsync("cafe", lat, lng);
+            // 1. Try BizData first
+            var venues = await _provider.SearchByCategoryAsync("cafe", lat, lng);
 
-    // 2. If BizData returns nothing, fall back to DB
-    if (!venues.Any())
-    {
-        venues = await _db.Venues
-            .Include(v => v.VenueTags)
-                .ThenInclude(vt => vt.Tag)
-            .Where(v => v.VenueTags.Any(vt => vt.Tag.Name == moodTrimmed))
-            .ToListAsync();
-    }
-    else
-    {
-        // 3. If BizData returns venues, filter them by mood tags
-        var venueIds = venues.Select(v => v.Id).ToList();
+            // 2. If BizData returns nothing, fallback to DB
+            if (!venues.Any())
+            {
+                venues = await _db.Venues
+                    .Include(v => v.VenueTags)
+                        .ThenInclude(vt => vt.Tag)
+                    .Where(v => v.VenueTags.Any(vt => vt.Tag.Name == moodTrimmed))
+                    .ToListAsync();
+            }
+            else
+            {
+                // 3. Filter BizData venues by mood
+                var venueIds = venues.Select(v => v.Id).ToList();
 
-        venues = await _db.Venues
-            .Include(v => v.VenueTags)
-                .ThenInclude(vt => vt.Tag)
-            .Where(v => venueIds.Contains(v.Id) &&
-                        v.VenueTags.Any(vt => vt.Tag.Name == moodTrimmed))
-            .ToListAsync();
-    }
+                venues = await _db.Venues
+                    .Include(v => v.VenueTags)
+                        .ThenInclude(vt => vt.Tag)
+                    .Where(v => venueIds.Contains(v.Id) &&
+                                v.VenueTags.Any(vt => vt.Tag.Name == moodTrimmed))
+                    .ToListAsync();
 
-    return Ok(venues);
-}
+                // 4. If no overlap, fallback again to DB
+                if (!venues.Any())
+                {
+                    venues = await _db.Venues
+                        .Include(v => v.VenueTags)
+                            .ThenInclude(vt => vt.Tag)
+                        .Where(v => v.VenueTags.Any(vt => vt.Tag.Name == moodTrimmed))
+                        .ToListAsync();
+                }
+            }
+
+            return Ok(venues);
+        }
+
 
 
         [HttpGet("{id}")]
