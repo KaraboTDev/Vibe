@@ -19,7 +19,8 @@ builder.Services.AddDbContext<VibeDbContext>(options =>
 
 // Services
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IVenueDataProvider, BizDataProvider>();
+// Register BizDataProvider with an injected HttpClient
+builder.Services.AddHttpClient<IVenueDataProvider, BizDataProvider>();
 builder.Services.AddScoped<IVenueService, VenueService>();
 
 // Authentication - JWT
@@ -69,7 +70,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
