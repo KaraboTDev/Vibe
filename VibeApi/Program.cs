@@ -9,6 +9,7 @@ using VibeApi.Services.Interfaces;
 var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
+builder.Configuration.AddEnvironmentVariables();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -24,9 +25,10 @@ builder.Services.AddHttpClient<IVenueDataProvider, BizDataProvider>();
 builder.Services.AddScoped<IVenueService, VenueService>();
 
 // Authentication - JWT
-var jwtKey = builder.Configuration["Jwt:Key"] ?? string.Empty;
-var issuer = builder.Configuration["Jwt:Issuer"];
-var audience = builder.Configuration["Jwt:Audience"];
+var jwtKey = builder.Configuration["JwtKey"] ?? string.Empty;
+var issuer = builder.Configuration["JwtIssuer"];
+var audience = builder.Configuration["JwtAudience"];
+
 
 if (string.IsNullOrWhiteSpace(jwtKey))
 {
