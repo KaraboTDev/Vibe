@@ -27,42 +27,74 @@ namespace VibeApi.Controllers
         {
             var moodTrimmed = (mood ?? string.Empty).Trim().ToLower();
 
-            // 1. Try BizData first
-            var venues = await _provider.SearchByCategoryAsync("cafe", lat, lng);
+            // 1. Fetch from external provider
+            var providerVenues = await _provider.SearchByCategoryAsync("cafe", lat, lng);
 
-            // 2. If BizData returns nothing, fallback to DB
-            if (!venues.Any())
+            if (providerVenues != null && providerVenues.Any())
             {
-                venues = await _db.Venues
-                    .Include(v => v.VenueTags)
-                        .ThenInclude(vt => vt.Tag)
-                    .Where(v => v.VenueTags.Any(vt => vt.Tag.Name == moodTrimmed))
-                    .ToListAsync();
-            }
-            else
-            {
-                // 3. Filter BizData venues by mood
-                var venueIds = venues.Select(v => v.Id).ToList();
+                // 2. Ensure provider venues are persisted (only add new ones)
+                var externalIds = providerVenues.Select(v => v.ExternalRefId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
 
-                venues = await _db.Venues
-                    .Include(v => v.VenueTags)
-                        .ThenInclude(vt => vt.Tag)
-                    .Where(v => venueIds.Contains(v.Id) &&
-                                v.VenueTags.Any(vt => vt.Tag.Name == moodTrimmed))
-                    .ToListAsync();
+                var existing = await _db.Venues.Where(v => externalIds.Contains(v.ExternalRefId)).ToListAsync();
+                var existingByExt = existing.ToDictionary(v => v.ExternalRefId, v => v);
 
-                // 4. If no overlap, fallback again to DB
-                if (!venues.Any())
+                foreach (var pv in providerVenues)
                 {
-                    venues = await _db.Venues
-                        .Include(v => v.VenueTags)
-                            .ThenInclude(vt => vt.Tag)
-                        .Where(v => v.VenueTags.Any(vt => vt.Tag.Name == moodTrimmed))
-                        .ToListAsync();
+                    if (string.IsNullOrWhiteSpace(pv.ExternalRefId))
+                        continue;
+
+                    if (!existingByExt.ContainsKey(pv.ExternalRefId))
+                    {
+                        var newVenue = new Venue
+                        {
+                            ExternalRefId = pv.ExternalRefId,
+                            Name = pv.Name,
+                            Latitude = pv.Latitude,
+                            Longitude = pv.Longitude,
+                            Address = pv.Address,
+                            OpeningHours = pv.OpeningHours
+                        };
+
+                        _db.Venues.Add(newVenue);
+                        // keep the dictionary so further iterations won't duplicate
+                        existingByExt[pv.ExternalRefId] = newVenue;
+                    }
                 }
+
+                // 3. Persist any new venues
+                await _db.SaveChangesAsync();
             }
 
-            return Ok(venues);
+            // 4. Query DB for venues matching the mood (case-insensitive)
+            var matched = await _db.Venues
+                .Include(v => v.VenueTags).ThenInclude(vt => vt.Tag)
+                .Where(v => v.VenueTags.Any(vt => EF.Functions.ILike(vt.Tag.Name, moodTrimmed)))
+                .ToListAsync();
+
+            // 5. Map to DTOs
+            var dtoList = matched.Select(v => new VenueResultDto
+            {
+                Id = v.Id,
+                Name = v.Name,
+                Latitude = v.Latitude,
+                Longitude = v.Longitude,
+                Address = v.Address,
+                OpeningHours = v.OpeningHours,
+                Tags = v.VenueTags.Select(vt => vt.Tag.Name).ToList()
+            })
+            // 6. Sort by approximate distance (Euclidean on lat/lng degrees)
+            .OrderBy(v => GetDistanceSquared(v.Latitude, v.Longitude, lat, lng))
+            .ToList();
+
+            return Ok(dtoList);
+        }
+
+        // Simple approximate distance squared (no Earth curvature) for ordering
+        private static double GetDistanceSquared(decimal lat1, decimal lng1, decimal lat2, decimal lng2)
+        {
+            var dy = (double)(lat1 - lat2);
+            var dx = (double)(lng1 - lng2);
+            return dx * dx + dy * dy;
         }
 
 
