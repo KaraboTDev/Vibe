@@ -22,69 +22,39 @@ namespace VibeApi.Controllers
             _provider = provider;
         }
 
-        [HttpGet]
-        public async Task<ActionResult<List<VenueResultDto>>> Search(string mood, decimal lat, decimal lng)
-        {
-            // 1. Search external provider for "cafe" category venues
-            var externalResults = await _provider.SearchByCategoryAsync("cafe", lat, lng);
+        [HttpGet("venues")]
+public async Task<IActionResult> SearchVenues(string mood, decimal lat, decimal lng)
+{
+    var moodTrimmed = (mood ?? string.Empty).Trim().ToLower();
 
-            // 2. For each result, ensure it exists in the Venues table (match on ExternalRefId)
-            foreach (var ext in externalResults)
-            {
-                var exists = await _db.Venues.AnyAsync(v => v.ExternalRefId == ext.ExternalRefId);
-                if (!exists)
-                {
-                    var newVenue = new Venue
-                    {
-                        ExternalRefId = ext.ExternalRefId,
-                        Name = ext.Name,
-                        Latitude = ext.Latitude,
-                        Longitude = ext.Longitude,
-                        Address = ext.Address,
-                        OpeningHours = ext.OpeningHours
-                    };
-                    _db.Venues.Add(newVenue);
-                }
-            }
+    // 1. Try BizData first
+    var venues = await _provider.SearchByCategoryAsync("cafe", lat, lng);
 
-            // 3. Save changes to the database
-            await _db.SaveChangesAsync();
+    // 2. If BizData returns nothing, fall back to DB
+    if (!venues.Any())
+    {
+        venues = await _db.Venues
+            .Include(v => v.VenueTags)
+                .ThenInclude(vt => vt.Tag)
+            .Where(v => v.VenueTags.Any(vt => vt.Tag.Name == moodTrimmed))
+            .ToListAsync();
+    }
+    else
+    {
+        // 3. If BizData returns venues, filter them by mood tags
+        var venueIds = venues.Select(v => v.Id).ToList();
 
-            // 4. Query Venues table for venues that have a VenueTag where Tag.Name equals mood (case-insensitive)
-            var moodTrimmed = (mood ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(moodTrimmed)) return Ok(new List<VenueResultDto>());
+        venues = await _db.Venues
+            .Include(v => v.VenueTags)
+                .ThenInclude(vt => vt.Tag)
+            .Where(v => venueIds.Contains(v.Id) &&
+                        v.VenueTags.Any(vt => vt.Tag.Name == moodTrimmed))
+            .ToListAsync();
+    }
 
-            var moodLower = moodTrimmed.ToLower();
+    return Ok(venues);
+}
 
-            var matchedVenues = await _db.Venues
-                .Include(v => v.VenueTags)
-                    .ThenInclude(vt => vt.Tag)
-                .Where(v => v.VenueTags.Any(vt => vt.Tag.Name.ToLower() == moodLower))
-                .ToListAsync();
-
-            // 5. Map to VenueResultDto
-            var results = matchedVenues.Select(v => new VenueResultDto
-            {
-                Id = v.Id,
-                Name = v.Name,
-                Latitude = v.Latitude,
-                Longitude = v.Longitude,
-                Address = v.Address,
-                OpeningHours = v.OpeningHours,
-                Tags = v.VenueTags.Select(vt => vt.Tag.Name).ToList()
-            }).ToList();
-
-            // 6. Sort by approximate planar distance from provided lat/lng
-            results = results.OrderBy(r =>
-            {
-                var dLat = (double)(r.Latitude - lat);
-                var dLng = (double)(r.Longitude - lng);
-                return Math.Sqrt(dLat * dLat + dLng * dLng);
-            }).ToList();
-
-            // 7. Return the sorted list
-            return Ok(results);
-        }
 
         [HttpGet("{id}")]
         public async Task<ActionResult<VenueResultDto>> GetById(int id)
