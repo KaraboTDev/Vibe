@@ -31,16 +31,16 @@ namespace VibeApi.Controllers
             if (userIdClaim == null) return Unauthorized();
             if (!int.TryParse(userIdClaim, out var userId)) return Unauthorized();
 
-            var venue = await _venueService.GetOrCreateByExternalRefAsync(request.ExternalRefId);
+            var venueExists = await _db.Venues.AnyAsync(v => v.Id == request.VenueId);
+            if (!venueExists) return NotFound(new { message = "Venue not found" });
 
-            // check for existing favorite
-            var exists = await _db.Favorites.AnyAsync(f => f.UserId == userId && f.VenueId == venue.Id);
+            var exists = await _db.Favorites.AnyAsync(f => f.UserId == userId && f.VenueId == request.VenueId);
             if (exists) return Conflict(new { message = "Favorite already exists" });
 
             var fav = new Models.Favorite
             {
                 UserId = userId,
-                VenueId = venue.Id,
+                VenueId = request.VenueId,
                 SavedAt = DateTime.UtcNow
             };
 
