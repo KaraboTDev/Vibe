@@ -25,17 +25,25 @@ builder.Services.AddHttpClient<IVenueDataProvider, BizDataProvider>();
 builder.Services.AddScoped<IVenueService, VenueService>();
 
 // Authentication - JWT
-var jwtKey = builder.Configuration["JwtKey"] ?? string.Empty;
-var issuer = builder.Configuration["JwtIssuer"];
-var audience = builder.Configuration["JwtAudience"];
+// Read configuration using both common keys to be tolerant of different config styles.
+// Preferred configuration (appsettings.json or environment variables):
+//   "Jwt": { "Key": "...", "Issuer": "...", "Audience": "..." }
+// Environment variable form for nested keys: Jwt__Key, Jwt__Issuer, Jwt__Audience
+var jwtKey = builder.Configuration["Jwt:Key"] ?? builder.Configuration["JwtKey"] ?? string.Empty;
+var issuer = builder.Configuration["Jwt:Issuer"] ?? builder.Configuration["JwtIssuer"];
+var audience = builder.Configuration["Jwt:Audience"] ?? builder.Configuration["JwtAudience"];
 
-
+// Fail fast with clear errors so missing/empty configuration is caught on startup.
 if (string.IsNullOrWhiteSpace(jwtKey))
-{
-    // Warning in development: developers must set a key in configuration
-}
+    throw new InvalidOperationException(
+        "Missing configuration: Jwt:Key (or JwtKey). Set a non-empty signing key. For environment variables use 'Jwt__Key'.");
 
 var key = Encoding.UTF8.GetBytes(jwtKey);
+if (key.Length == 0)
+    throw new InvalidOperationException("Jwt:Key produced zero-length bytes. Ensure Jwt:Key is not empty.");
+
+if (string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience))
+    throw new InvalidOperationException("Missing configuration: Jwt:Issuer and Jwt:Audience must be set.");
 
 builder.Services.AddAuthentication(options =>
 {
